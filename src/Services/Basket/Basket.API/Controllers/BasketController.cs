@@ -1,4 +1,5 @@
 ﻿using Basket.API.Entities;
+using Basket.API.GrpcServices;
 using Basket.API.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -14,11 +15,18 @@ namespace Basket.API.Controllers
     public class BasketController:ControllerBase
     {
         private readonly IBasketRepository _repository;
+        private readonly DiscountGrpcService _discountGrpcService;
 
-        public BasketController(IBasketRepository repository)
+        public BasketController(IBasketRepository repository, DiscountGrpcService discountGrpcService)
         {
-            _repository = repository;
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _discountGrpcService = discountGrpcService?? throw new ArgumentNullException(nameof(discountGrpcService));
         }
+
+        //public BasketController(IBasketRepository repository)
+        //{
+        //    _repository = repository;
+        //}
 
         [HttpGet("{userName}",Name ="GetBasket")]
         [ProducesResponseType(typeof(ShoppingCart),(int)HttpStatusCode.OK)]
@@ -32,14 +40,24 @@ namespace Basket.API.Controllers
         [ProducesResponseType(typeof(ShoppingCart),(int)HttpStatusCode.OK)]
         public async Task<ActionResult<ShoppingCart>> updateBasket([FromBody] ShoppingCart basket)
         {
+            // communicate with grpc and calculating latest prices
+            // consume Discount grpc class
+            foreach(var item in basket.Items)
+            {
+                var coupon = await _discountGrpcService.GetDiscount(item.ProductName);
+                // applying discount
+                item.Price -= coupon.Amount;
+            }
+
             var mybasket = await _repository.UpdateBasket(basket);
-            return Ok(basket);
+            return Ok(mybasket);
         }
 
         [HttpDelete]
-        public async Task DeleteBasket(string userName)
+        public async Task<IActionResult> DeleteBasket(string userName)
         {
             await _repository.DeleteBasket(userName);
+            return Ok();
         }
 
     }
